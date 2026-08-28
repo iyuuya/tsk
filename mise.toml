@@ -1,7 +1,5 @@
 [tools]
-bun = "latest"
 go = "latest"
-ruby = "4"
 
 [tasks.run]
 description = "Run the app"

@@ -1,0 +1,28 @@
+name: CI
+
+on:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: jdx/mise-action@v2
+
+      - name: Run tests with coverage
+        run: mise run coverage
+
+      - name: Write coverage summary
+        run: |
+          {
+            echo "### Coverage"
+            echo
+            echo '```'
+            go tool cover -func=bin/coverage.out
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"

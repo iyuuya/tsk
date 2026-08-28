@@ -1,0 +1,24 @@
+[tools]
+bun = "latest"
+go = "latest"
+ruby = "4"
+
+[tasks.run]
+description = "Run the app"
+run = "go run ."
+
+[tasks.build]
+description = "Build the binary to bin/tsk"
+run = "go build -o bin/tsk ."
+
+[tasks.install]
+description = "Install tsk into GOBIN (go install .)"
+run = "go install ."
+
+[tasks.test]
+description = "Run tests"
+run = "go test ./..."
+
+[tasks.coverage]
+description = "Run tests with coverage and print the summary"
+run = "go test ./... -coverprofile=bin/coverage.out && go tool cover -func=bin/coverage.out"

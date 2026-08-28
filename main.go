@@ -8,6 +8,7 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
+	"strings"
 
 	"github.com/iyuuya/go/exitcode"
 
@@ -25,21 +26,96 @@ import (
 // config.Default lists them bun > pnpm > yarn > npm (npm has no Match, so
 // it's the fallback when none of the others claim the directory).
 func discoverers() ([]task.Discoverer, error) {
-	defs, err := config.Load()
+	cfg, err := config.Load()
 	if err != nil {
 		return nil, err
 	}
-	ds := make([]task.Discoverer, len(defs))
-	for i, def := range defs {
+	ds := make([]task.Discoverer, len(cfg.Adaptor))
+	for i, def := range cfg.Adaptor {
 		ds[i] = spec.Discoverer(def)
 	}
 	return ds, nil
 }
 
 func usage() {
-	fmt.Fprintln(os.Stderr, "usage: tsk list [--refresh] [--global] [--json]")
-	fmt.Fprintln(os.Stderr, "       tsk run [--refresh] [--global] [<root>] [<dir>] <adaptor> <task>")
+	fmt.Fprintln(os.Stderr, "usage: tsk list [--refresh] [--scope global|repo|dir] [--json]")
+	fmt.Fprintln(os.Stderr, "       tsk run [--refresh] [--scope global|repo|dir] [<root>] [<dir>] <adaptor> <task>")
 	fmt.Fprintln(os.Stderr, "       tsk config init [--force]")
+}
+
+// Scope values select which tasks list/run consider.
+const (
+	scopeGlobal = "global" // every project tsk has cached state for
+	scopeRepo   = "repo"   // the enclosing git repository
+	scopeDir    = "dir"    // the current working directory and below
+)
+
+// parseScope validates a scope name.
+func parseScope(s string) (string, error) {
+	switch s {
+	case scopeGlobal, scopeRepo, scopeDir:
+		return s, nil
+	}
+	return "", fmt.Errorf("invalid scope %q (valid: global, repo, dir)", s)
+}
+
+// resolveScope picks the effective scope for list/run: the --scope flag
+// when given, otherwise the config file's default_scope, otherwise repo.
+func resolveScope(flagValue string) (string, error) {
+	if flagValue != "" {
+		return parseScope(flagValue)
+	}
+	cfg, err := config.Load()
+	if err != nil {
+		return "", err
+	}
+	if cfg.DefaultScope == "" {
+		return scopeRepo, nil
+	}
+	s, err := parseScope(cfg.DefaultScope)
+	if err != nil {
+		return "", fmt.Errorf("config default_scope: %w", err)
+	}
+	return s, nil
+}
+
+// scopeRoot resolves the discovery root for the repo and dir scopes, plus
+// (for dir) the directory the results are narrowed to. Dir scope still
+// discovers and caches from the enclosing repository's root when there is
+// one — so the repo's cache is reused and stays whole — and only filters
+// the resulting tasks to the current directory's subtree; outside any
+// repository the directory itself becomes the root.
+func scopeRoot(scope string) (root, filter string, err error) {
+	if scope == scopeRepo {
+		root, err = task.ProjectRoot(".")
+		return root, "", err
+	}
+	cwd, err := os.Getwd()
+	if err != nil {
+		return "", "", err
+	}
+	// Adaptor dirs descend from git's root, which has symlinks resolved;
+	// resolve cwd the same way so the subtree filter can't miss.
+	if resolved, err := filepath.EvalSymlinks(cwd); err == nil {
+		cwd = resolved
+	}
+	root, err = task.ProjectRoot(cwd)
+	if err != nil {
+		root = cwd
+	}
+	return root, cwd, nil
+}
+
+// tasksUnder narrows tasks to those whose adaptor directory is dir itself
+// or inside it.
+func tasksUnder(dir string, tasks []task.Task) []task.Task {
+	under := make([]task.Task, 0, len(tasks))
+	for _, t := range tasks {
+		if t.Dir() == dir || strings.HasPrefix(t.Dir(), dir+string(filepath.Separator)) {
+			under = append(under, t)
+		}
+	}
+	return under
 }
 
 func main() {
@@ -118,11 +194,11 @@ func cmdConfigInit(args []string) error {
 		}
 	}
 
-	defs, err := config.Default()
+	cfg, err := config.Default()
 	if err != nil {
 		return err
 	}
-	if err := config.Save(defs); err != nil {
+	if err := config.Save(cfg); err != nil {
 		return err
 	}
 	path, err := config.Path()
@@ -135,27 +211,35 @@ func cmdConfigInit(args []string) error {
 
 func cmdList(args []string) error {
 	fs := flag.NewFlagSet("list", flag.ContinueOnError)
-	global := fs.Bool("global", false, "list tasks across every project tsk has cached state for")
+	scopeFlag := fs.String("scope", "", "task scope: global, repo or dir (default: the config file's default_scope, or repo)")
 	refresh := fs.Bool("refresh", false, "bypass the cache and re-discover tasks")
 	jsonOut := fs.Bool("json", false, "print tasks as JSON, with each task's project root")
 	if err := fs.Parse(args); err != nil {
 		return err
 	}
 
-	if *global {
+	scope, err := resolveScope(*scopeFlag)
+	if err != nil {
+		return err
+	}
+
+	if scope == scopeGlobal {
 		if *refresh {
-			return fmt.Errorf("--refresh is not supported with --global: global listing only reads cached state, it never walks other projects")
+			return fmt.Errorf("--refresh is not supported with --scope global: global listing only reads cached state, it never walks other projects")
 		}
 		return listGlobal(*jsonOut)
 	}
 
-	root, err := task.ProjectRoot(".")
+	root, filter, err := scopeRoot(scope)
 	if err != nil {
 		return err
 	}
 	tasks, err := syncTasks(root, *refresh)
 	if err != nil {
 		return err
+	}
+	if filter != "" {
+		tasks = tasksUnder(filter, tasks)
 	}
 	if *jsonOut {
 		return printJSON(listTasks(root, tasks))
@@ -166,8 +250,8 @@ func cmdList(args []string) error {
 
 // listTask is one element of `tsk list --json` output: a task plus the
 // project root and root-relative directory a consumer needs to run it from
-// anywhere (`tsk run --global <root> <dir> <adaptor> <task>`) — the tab-
-// separated human output only carries display labels.
+// anywhere (`tsk run --scope global <root> <dir> <adaptor> <task>`) — the
+// tab-separated human output only carries display labels.
 type listTask struct {
 	Root        string `json:"root"`
 	Dir         string `json:"dir"`
@@ -237,15 +321,26 @@ func projectLabel(root string) string {
 
 func cmdRun(args []string) error {
 	fs := flag.NewFlagSet("run", flag.ContinueOnError)
-	global := fs.Bool("global", false, "target a project other than the current one")
+	scopeFlag := fs.String("scope", "", "task scope: global, repo or dir (default: the config file's default_scope, or repo)")
 	refresh := fs.Bool("refresh", false, "bypass the cache and re-discover tasks")
 	if err := fs.Parse(args); err != nil {
 		return err
 	}
 	rest := fs.Args()
 
-	var root string
-	if *global {
+	scope, err := resolveScope(*scopeFlag)
+	if err != nil {
+		return err
+	}
+
+	// root is where tasks are discovered from; base is what an omitted or
+	// relative <dir> resolves against. They differ only for dir scope, where
+	// discovery still runs from the repository root but the target directory
+	// defaults to the current one.
+	var root, base string
+	if scope == scopeGlobal {
+		// Global scope targets a project other than the current one, so it
+		// takes the project root as the first positional argument.
 		if len(rest) == 0 {
 			return errUsage
 		}
@@ -253,14 +348,17 @@ func cmdRun(args []string) error {
 		if err != nil {
 			return err
 		}
-		root = r
+		root, base = r, r
 		rest = rest[1:]
 	} else {
-		r, err := task.ProjectRoot(".")
+		r, filter, err := scopeRoot(scope)
 		if err != nil {
 			return err
 		}
-		root = r
+		root, base = r, r
+		if filter != "" {
+			base = filter
+		}
 	}
 
 	var dirArg, adaptorName, taskName string
@@ -273,9 +371,9 @@ func cmdRun(args []string) error {
 		return errUsage
 	}
 
-	dir := root
+	dir := base
 	if dirArg != "" {
-		dir = resolveDir(root, dirArg)
+		dir = resolveDir(base, dirArg)
 	}
 
 	tasks, err := syncTasks(root, *refresh)
@@ -305,12 +403,13 @@ func syncTasks(root string, refresh bool) ([]task.Task, error) {
 }
 
 // resolveDir turns a dir argument into an absolute path. An absolute dir is
-// used as-is; a relative one is resolved against the project root.
-func resolveDir(root, dir string) string {
+// used as-is; a relative one is resolved against base (the project root, or
+// the current directory under dir scope).
+func resolveDir(base, dir string) string {
 	if filepath.IsAbs(dir) {
 		return dir
 	}
-	return filepath.Join(root, dir)
+	return filepath.Join(base, dir)
 }
 
 func printTasks(root string, tasks []task.Task) {

@@ -39,7 +39,7 @@ end
 -- parse_list turns `tsk list --json` stdout into a list of task tables:
 -- root (absolute project root), dir (relative to root), adaptor, name,
 -- description. root is what makes running from outside the project
--- possible (tsk run --global <root> <dir> <adaptor> <task>).
+-- possible (tsk run --scope=global <root> <dir> <adaptor> <task>).
 function M.parse_list(stdout)
   local ok, rows = pcall(vim.json.decode, stdout)
   if not ok or type(rows) ~= "table" then
@@ -66,15 +66,20 @@ end
 
 -- list runs `tsk list --json` asynchronously in opts.cwd and calls
 -- cb(err, tasks) on the main loop. opts.refresh maps to --refresh;
--- opts.global maps to --global (every project's cached tasks — refresh
--- doesn't apply there and is ignored).
+-- opts.global maps to --scope=global (every project's cached tasks —
+-- refresh doesn't apply there and is ignored). The scope is always passed
+-- explicitly: the task tables carry dirs relative to the repository root,
+-- so a user's default_scope config must not leak into these invocations.
 function M.list(opts, cb)
   opts = opts or {}
   local cmd = { M.options.cmd, "list", "--json" }
   if opts.global then
-    cmd[#cmd + 1] = "--global"
-  elseif opts.refresh then
-    cmd[#cmd + 1] = "--refresh"
+    cmd[#cmd + 1] = "--scope=global"
+  else
+    cmd[#cmd + 1] = "--scope=repo"
+    if opts.refresh then
+      cmd[#cmd + 1] = "--refresh"
+    end
   end
   local ok, err = pcall(vim.system, cmd, { text = true, cwd = opts.cwd }, function(res)
     vim.schedule(function()
@@ -96,8 +101,8 @@ local run_count = 0
 
 -- run executes one task (a table as returned by list) with tsk resolving
 -- the project from opts.cwd — or, with opts.global, from the task's own
--- root (tsk run --global), so it works from any directory. Output goes to
--- a detached terminal-emulator
+-- root (tsk run --scope=global), so it works from any directory. Output
+-- goes to a detached terminal-emulator
 -- buffer (nvim_open_term) fed from a pty job — unlike a regular :terminal
 -- buffer it survives the process exiting (no "press any key to close"), so
 -- the result stays scrollable/yankable, with ANSI colors intact. Typed
@@ -126,11 +131,13 @@ function M.run(task, opts)
     end
   end
 
+  -- Scope is pinned for the same reason as in M.list: task.dir is relative
+  -- to the repository root.
   local cmd
   if opts.global then
-    cmd = { M.options.cmd, "run", "--global", task.root, task.dir, task.adaptor, task.name }
+    cmd = { M.options.cmd, "run", "--scope=global", task.root, task.dir, task.adaptor, task.name }
   else
-    cmd = { M.options.cmd, "run", task.dir, task.adaptor, task.name }
+    cmd = { M.options.cmd, "run", "--scope=repo", task.dir, task.adaptor, task.name }
   end
 
   -- Size the pty to the window's text area so the task's output wraps
@@ -249,7 +256,7 @@ end
 -- opts.cwd overrides the directory the project is resolved from (default:
 -- Neovim's current working directory); opts.global picks from every
 -- project tsk has cached state for (entries gain a "user/repo" prefix) and
--- runs the choice via tsk run --global.
+-- runs the choice via tsk run --scope=global.
 function M.pick(opts)
   opts = opts or {}
   local cwd = opts.cwd or vim.fn.getcwd()

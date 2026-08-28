@@ -1,26 +1,29 @@
-// Package config holds tsk's adaptor configuration: the built-in default
-// set (Default), and loading/saving a user's own set to/from a TOML config
-// file (Load/Save, see config.go).
+// Package config holds tsk's configuration: the built-in defaults
+// (Default), and loading/saving a user's own config to/from a TOML file
+// (Load/Save, see config.go).
 package config
 
 import (
 	"fmt"
 
 	"github.com/BurntSushi/toml"
-
-	"github.com/iyuuya/tsk/spec"
 )
 
-// defaultTOML is tsk's built-in adaptor set, written in the exact same TOML
-// shape as the user's config file so Default can parse it through the same
-// path Load uses for that file (and so it can serve as a reference for what
-// a hand-written config looks like).
+// defaultTOML is tsk's built-in configuration, written in the exact same
+// TOML shape as the user's config file so Default can parse it through the
+// same path Load uses for that file (and so it can serve as a reference for
+// what a hand-written config looks like).
 //
 // The adaptors appear in priority order: bun, pnpm, yarn and npm all key
 // off package.json, so where a directory could match more than one of
 // them, task.Discover picks whichever comes first here (see spec.Discoverer
 // and task.Discover).
 const defaultTOML = `
+# The scope list/run use when --scope isn't given: "global" (every project
+# tsk has cached state for), "repo" (the enclosing git repository) or "dir"
+# (the current directory and below).
+default_scope = "repo"
+
 [[adaptor]]
 kind = "mise"
 definition_files = ["mise.toml", ".mise.toml"]
@@ -146,14 +149,14 @@ args = [
 pattern = '^([^:\s]+):(?:.*?#+\s*(.*))?$'
 `
 
-// Default returns tsk's built-in adaptor definitions by parsing defaultTOML
-// the same way Load parses the user's config file. defaultTOML is a
+// Default returns tsk's built-in configuration by parsing defaultTOML the
+// same way Load parses the user's config file. defaultTOML is a
 // compile-time constant, so a returned error means a bug in the string
 // itself (config.TestDefault guards against that).
-func Default() ([]spec.Definition, error) {
-	var doc document
-	if err := toml.Unmarshal([]byte(defaultTOML), &doc); err != nil {
-		return nil, fmt.Errorf("config: built-in default TOML is invalid: %w", err)
+func Default() (Config, error) {
+	var cfg Config
+	if err := toml.Unmarshal([]byte(defaultTOML), &cfg); err != nil {
+		return Config{}, fmt.Errorf("config: built-in default TOML is invalid: %w", err)
 	}
-	return doc.Adaptor, nil
+	return cfg, nil
 }

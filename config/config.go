@@ -9,9 +9,15 @@ import (
 	"github.com/iyuuya/tsk/spec"
 )
 
-// document is the TOML shape of tsk's config file: an array of tables named
-// "adaptor", each unmarshaling straight into a spec.Definition.
-type document struct {
+// Config is the parsed shape of tsk's TOML config file: top-level settings
+// followed by an array of tables named "adaptor", each unmarshaling
+// straight into a spec.Definition.
+type Config struct {
+	// DefaultScope is the scope `tsk list`/`tsk run` use when --scope isn't
+	// given: "global", "repo" or "dir". Empty means repo. The CLI validates
+	// the value; config only carries it.
+	DefaultScope string `toml:"default_scope,omitempty"`
+	// Adaptor is the adaptor definitions, in priority order.
 	Adaptor []spec.Definition `toml:"adaptor"`
 }
 
@@ -38,34 +44,34 @@ func Path() (string, error) {
 	return filepath.Join(dir, "config.toml"), nil
 }
 
-// Load returns the user's adaptor definitions from the config file. It
-// falls back to Default when the file doesn't exist.
-func Load() ([]spec.Definition, error) {
+// Load returns the user's configuration from the config file. It falls
+// back to Default when the file doesn't exist.
+func Load() (Config, error) {
 	path, err := Path()
 	if err != nil {
-		return nil, err
+		return Config{}, err
 	}
 	data, err := os.ReadFile(path)
 	if err != nil {
 		if os.IsNotExist(err) {
 			return Default()
 		}
-		return nil, err
+		return Config{}, err
 	}
-	var doc document
-	if err := toml.Unmarshal(data, &doc); err != nil {
-		return nil, err
+	var cfg Config
+	if err := toml.Unmarshal(data, &cfg); err != nil {
+		return Config{}, err
 	}
-	return doc.Adaptor, nil
+	return cfg, nil
 }
 
-// Save writes defs to the config file, replacing any existing one.
-func Save(defs []spec.Definition) error {
+// Save writes cfg to the config file, replacing any existing one.
+func Save(cfg Config) error {
 	path, err := Path()
 	if err != nil {
 		return err
 	}
-	data, err := toml.Marshal(document{Adaptor: defs})
+	data, err := toml.Marshal(cfg)
 	if err != nil {
 		return err
 	}

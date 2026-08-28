@@ -6,10 +6,14 @@ import "testing"
 // or misspelled key there is invisible to the compiler and only shows up as
 // an error from Default.
 func TestDefault(t *testing.T) {
-	defs, err := Default()
+	cfg, err := Default()
 	if err != nil {
 		t.Fatalf("Default() = %v; defaultTOML is broken", err)
 	}
+	if cfg.DefaultScope != "repo" {
+		t.Errorf("Default().DefaultScope = %q, want %q", cfg.DefaultScope, "repo")
+	}
+	defs := cfg.Adaptor
 
 	want := []string{"mise", "bun", "pnpm", "yarn", "npm", "rake", "make"}
 	if len(defs) != len(want) {

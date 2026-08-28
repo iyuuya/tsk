@@ -1,7 +1,5 @@
 [tools]
-bun = "latest"
 go = "latest"
-ruby = "4"
 
 [tasks.run]
 description = "Run the app"
@@ -21,4 +19,4 @@ run = "go test ./..."
 
 [tasks.coverage]
 description = "Run tests with coverage and print the summary"
-run = "go test ./... -coverprofile=bin/coverage.out && go tool cover -func=bin/coverage.out"
+run = "mkdir -p bin && go test ./... -coverprofile=bin/coverage.out && go tool cover -func=bin/coverage.out"

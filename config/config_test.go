@@ -33,7 +33,7 @@ func TestPathHonorsXDGConfigHome(t *testing.T) {
 func TestLoadFallsBackToDefault(t *testing.T) {
 	setConfigHome(t)
 
-	defs, err := Load()
+	cfg, err := Load()
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -41,7 +41,7 @@ func TestLoadFallsBackToDefault(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !reflect.DeepEqual(defs, want) {
+	if !reflect.DeepEqual(cfg, want) {
 		t.Error("Load() without a config file differs from Default()")
 	}
 }
@@ -49,7 +49,7 @@ func TestLoadFallsBackToDefault(t *testing.T) {
 func TestSaveLoadRoundtrip(t *testing.T) {
 	setConfigHome(t)
 
-	want := []spec.Definition{{
+	want := Config{DefaultScope: "dir", Adaptor: []spec.Definition{{
 		Kind:            "custom",
 		DefinitionFiles: []string{"Custom.toml"},
 		Match: &spec.MatchSpec{
@@ -68,7 +68,7 @@ func TestSaveLoadRoundtrip(t *testing.T) {
 			SourceField:      "source",
 		},
 		Run: []string{"custom", "run", "{{name}}"},
-	}}
+	}}}
 	if err := Save(want); err != nil {
 		t.Fatal(err)
 	}
@@ -83,22 +83,22 @@ func TestSaveLoadRoundtrip(t *testing.T) {
 }
 
 func TestDefaultSurvivesRoundtrip(t *testing.T) {
-	// The built-in set must serialize to the config-file format and come
+	// The built-in config must serialize to the config-file format and come
 	// back identical — this is what `tsk config init` relies on.
 	setConfigHome(t)
 
-	defs, err := Default()
+	cfg, err := Default()
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := Save(defs); err != nil {
+	if err := Save(cfg); err != nil {
 		t.Fatal(err)
 	}
 	got, err := Load()
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !reflect.DeepEqual(got, defs) {
+	if !reflect.DeepEqual(got, cfg) {
 		t.Error("Default() does not survive a Save/Load roundtrip")
 	}
 }
@@ -114,7 +114,7 @@ func TestExists(t *testing.T) {
 		t.Error("Exists() = true before any config was written")
 	}
 
-	if err := Save(nil); err != nil {
+	if err := Save(Config{}); err != nil {
 		t.Fatal(err)
 	}
 	ok, err = Exists()
@@ -129,11 +129,11 @@ func TestExists(t *testing.T) {
 func TestSaveLeavesNoTempFile(t *testing.T) {
 	setConfigHome(t)
 
-	defs, err := Default()
+	cfg, err := Default()
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := Save(defs); err != nil {
+	if err := Save(cfg); err != nil {
 		t.Fatal(err)
 	}
 	dir, err := Dir()
@@ -164,7 +164,7 @@ func TestErrorsWhenConfigDirUnresolvable(t *testing.T) {
 	if _, err := Load(); err == nil {
 		t.Error("Load(): expected an error, got nil")
 	}
-	if err := Save(nil); err == nil {
+	if err := Save(Config{}); err == nil {
 		t.Error("Save(): expected an error, got nil")
 	}
 	if _, err := Exists(); err == nil {

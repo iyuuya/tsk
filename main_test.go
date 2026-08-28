@@ -163,7 +163,7 @@ func TestRealMainUnknownCommand(t *testing.T) {
 
 func TestRealMainCommandError(t *testing.T) {
 	isolateEnv(t)
-	code, _, stderr := runMain(t, "list", "--global", "--refresh")
+	code, _, stderr := runMain(t, "list", "--scope=global", "--refresh")
 	if code == exitcode.ExitOK {
 		t.Error("realMain with a failing command: expected a non-OK exit code")
 	}
@@ -231,10 +231,11 @@ func TestDiscoverers(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defs, err := config.Default()
+	cfg, err := config.Default()
 	if err != nil {
 		t.Fatal(err)
 	}
+	defs := cfg.Adaptor
 	if len(ds) != len(defs) {
 		t.Fatalf("got %d discoverers, want %d", len(ds), len(defs))
 	}
@@ -335,8 +336,8 @@ func TestCmdListJSON(t *testing.T) {
 
 func TestCmdListGlobalRefreshRejected(t *testing.T) {
 	isolateEnv(t)
-	if err := cmdList([]string{"--global", "--refresh"}); err == nil {
-		t.Error("cmdList --global --refresh: expected an error, got nil")
+	if err := cmdList([]string{"--scope=global", "--refresh"}); err == nil {
+		t.Error("cmdList --scope=global --refresh: expected an error, got nil")
 	}
 }
 
@@ -353,25 +354,25 @@ func TestCmdListGlobal(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	out, err := captureStdout(t, func() error { return cmdList([]string{"--global"}) })
+	out, err := captureStdout(t, func() error { return cmdList([]string{"--scope=global"}) })
 	if err != nil {
 		t.Fatal(err)
 	}
 	if want := "iyuuya/proj\t.\tnpm\tbuild\tcompile\n"; out != want {
-		t.Errorf("cmdList --global output = %q, want %q", out, want)
+		t.Errorf("cmdList --scope=global output = %q, want %q", out, want)
 	}
 
-	out, err = captureStdout(t, func() error { return cmdList([]string{"--global", "--json"}) })
+	out, err = captureStdout(t, func() error { return cmdList([]string{"--scope=global", "--json"}) })
 	if err != nil {
 		t.Fatal(err)
 	}
 	var rows []listTask
 	if err := json.Unmarshal([]byte(out), &rows); err != nil {
-		t.Fatalf("--global --json output is not valid JSON: %v\n%s", err, out)
+		t.Fatalf("--scope=global --json output is not valid JSON: %v\n%s", err, out)
 	}
 	want := listTask{Root: "/src/github.com/iyuuya/proj", Dir: ".", Adaptor: "npm", Task: "build", Description: "compile"}
 	if len(rows) != 1 || rows[0] != want {
-		t.Errorf("cmdList --global --json = %+v, want [%+v]", rows, want)
+		t.Errorf("cmdList --scope=global --json = %+v, want [%+v]", rows, want)
 	}
 }
 
@@ -407,14 +408,14 @@ func TestCmdRunWithDir(t *testing.T) {
 }
 
 func TestCmdRunGlobal(t *testing.T) {
-	// --global takes the root as an argument, so no git repo or chdir is
-	// involved.
+	// Global scope takes the root as an argument, so no git repo or chdir
+	// is involved.
 	isolateEnv(t)
 	writeFakeConfig(t)
 	root := t.TempDir()
 	writeFile(t, filepath.Join(root, "fake.json"), `{"scripts": {"hello": ""}}`)
 
-	if err := cmdRun([]string{"--global", root, "fake", "hello"}); err != nil {
+	if err := cmdRun([]string{"--scope=global", root, "fake", "hello"}); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := os.Stat(filepath.Join(root, "out.txt")); err != nil {
@@ -479,17 +480,17 @@ func TestCmdConfigUsageErrors(t *testing.T) {
 func TestCmdRunUsageErrors(t *testing.T) {
 	isolateEnv(t)
 
-	// --global with no root argument.
-	if err := cmdRun([]string{"--global"}); !errors.Is(err, errUsage) {
-		t.Errorf("cmdRun --global with no root = %v, want errUsage", err)
+	// Global scope with no root argument.
+	if err := cmdRun([]string{"--scope=global"}); !errors.Is(err, errUsage) {
+		t.Errorf("cmdRun --scope=global with no root = %v, want errUsage", err)
 	}
-	// Too few and too many positional arguments. --global sidesteps
+	// Too few and too many positional arguments. Global scope sidesteps
 	// ProjectRoot so no git repo is needed.
 	root := t.TempDir()
-	if err := cmdRun([]string{"--global", root, "onlyadaptor"}); !errors.Is(err, errUsage) {
+	if err := cmdRun([]string{"--scope=global", root, "onlyadaptor"}); !errors.Is(err, errUsage) {
 		t.Errorf("cmdRun with 1 positional arg = %v, want errUsage", err)
 	}
-	if err := cmdRun([]string{"--global", root, "dir", "adaptor", "task", "extra"}); !errors.Is(err, errUsage) {
+	if err := cmdRun([]string{"--scope=global", root, "dir", "adaptor", "task", "extra"}); !errors.Is(err, errUsage) {
 		t.Errorf("cmdRun with 4 positional args = %v, want errUsage", err)
 	}
 }
@@ -587,6 +588,122 @@ func TestRelFallbacksKeepAbsolutePaths(t *testing.T) {
 	}
 	if !strings.Contains(out, "\t/abs/dir\t") {
 		t.Errorf("printTasks() output = %q, want the absolute dir printed", out)
+	}
+}
+
+func TestCmdListScopeDir(t *testing.T) {
+	root := setupProject(t)
+	writeFile(t, filepath.Join(root, "sub", "fake.json"), `{"scripts": {"deep": "digs"}}`)
+	t.Chdir(filepath.Join(root, "sub"))
+
+	out, err := captureStdout(t, func() error { return cmdList([]string{"--scope=dir"}) })
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Only sub's task is listed; the repo root's is filtered out, and the
+	// labels stay relative to the repo root.
+	want := filepath.Base(root) + "\tsub\tfake\tdeep\tdigs\n"
+	if out != want {
+		t.Errorf("cmdList --scope=dir output = %q, want %q", out, want)
+	}
+}
+
+func TestCmdListScopeDirOutsideRepo(t *testing.T) {
+	if _, err := exec.LookPath("git"); err != nil {
+		t.Skip("git not installed")
+	}
+	isolateEnv(t)
+	writeFakeConfig(t)
+	dir := t.TempDir()
+	t.Setenv("GIT_CEILING_DIRECTORIES", filepath.Dir(dir))
+	writeFile(t, filepath.Join(dir, "fake.json"), `{"scripts": {"hello": "greets"}}`)
+	t.Chdir(dir)
+
+	if _, err := task.ProjectRoot("."); err == nil {
+		t.Skip("temp dir is inside a git work tree; cannot exercise the no-repo path")
+	}
+
+	out, err := captureStdout(t, func() error { return cmdList([]string{"--scope=dir"}) })
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(out, "\t.\tfake\thello\tgreets\n") {
+		t.Errorf("cmdList --scope=dir outside a repo = %q, want the local task listed", out)
+	}
+}
+
+func TestCmdRunScopeDir(t *testing.T) {
+	root := setupProject(t)
+	writeFile(t, filepath.Join(root, "sub", "fake.json"), `{"scripts": {"deep": ""}}`)
+	t.Chdir(filepath.Join(root, "sub"))
+
+	if err := cmdRun([]string{"--scope=dir", "fake", "deep"}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(filepath.Join(root, "sub", "out.txt")); err != nil {
+		t.Errorf("run command did not execute in sub/: %v", err)
+	}
+
+	// The repo root's task lives outside the current directory, so a bare
+	// invocation under dir scope must not reach it.
+	err := cmdRun([]string{"--scope=dir", "fake", "hello"})
+	if err == nil || !strings.Contains(err.Error(), "task not found") {
+		t.Errorf("cmdRun --scope=dir for a repo-root task = %v, want task not found", err)
+	}
+}
+
+func TestDefaultScopeFromConfig(t *testing.T) {
+	isolateEnv(t)
+	path, err := config.Path()
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Top-level keys must precede the [[adaptor]] tables.
+	if err := os.WriteFile(path, []byte("default_scope = \"global\"\n"+fakeAdaptorConfig), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := state.Save(&state.State{
+		Root: "/src/github.com/iyuuya/proj",
+		Adaptors: []state.CachedAdaptor{{
+			Kind: "npm", Dir: ".",
+			Tasks: []state.CachedTask{{Name: "build", Description: "compile"}},
+		}},
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	// No --scope flag and no git repo involved: with default_scope = "global"
+	// the listing must come from cached state alone.
+	out, err := captureStdout(t, func() error { return cmdList(nil) })
+	if err != nil {
+		t.Fatal(err)
+	}
+	if want := "iyuuya/proj\t.\tnpm\tbuild\tcompile\n"; out != want {
+		t.Errorf("cmdList with default_scope=global = %q, want %q", out, want)
+	}
+}
+
+func TestInvalidScope(t *testing.T) {
+	isolateEnv(t)
+
+	if err := cmdList([]string{"--scope=bogus"}); err == nil || !strings.Contains(err.Error(), "invalid scope") {
+		t.Errorf("cmdList --scope=bogus = %v, want an invalid-scope error", err)
+	}
+
+	// An invalid default_scope in the config file is reported too...
+	path, err := config.Path()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(path, []byte("default_scope = \"sometimes\"\n"+fakeAdaptorConfig), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := cmdList(nil); err == nil || !strings.Contains(err.Error(), "default_scope") {
+		t.Errorf("cmdList with a bad default_scope = %v, want a default_scope error", err)
+	}
+	// ...but an explicit --scope never consults it.
+	if _, err := captureStdout(t, func() error { return cmdList([]string{"--scope=global"}) }); err != nil {
+		t.Errorf("cmdList --scope=global with a bad default_scope = %v, want the config value ignored", err)
 	}
 }
 

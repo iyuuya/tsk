@@ -23,20 +23,30 @@ mise run install   # go install . を実行($GOBIN / ~/go/bin に入ります)
 ## 使い方
 
 ```
-tsk list [--refresh] [--global] [--json]
+tsk list [--refresh] [--scope global|repo|dir] [--json]
 ```
 
-カレントプロジェクト内のタスクを一覧します。`--refresh` でキャッシュを無視して再検出、`--global` で全プロジェクトのキャッシュ済みタスクを一覧します。
+タスクを一覧します。`--refresh` でキャッシュを無視して再検出します。`--scope` で対象範囲を選べます:
+
+- `repo` — カレントの git リポジトリ(`.git` のあるルート)配下を再帰的に集約(デフォルト)
+- `dir` — コマンド実行時のカレントディレクトリ配下のみ(リポジトリ内であればキャッシュはリポジトリ単位で共有されます)
+- `global` — tsk がキャッシュしている全プロジェクトのタスク(キャッシュのみを参照するため `--refresh` とは併用できません)
 
 ```
-tsk run [--refresh] [--global] [<root>] [<dir>] <adaptor> <task>
+tsk run [--refresh] [--scope global|repo|dir] [<root>] [<dir>] <adaptor> <task>
 ```
 
-指定したタスクを実行します。
+指定したタスクを実行します。`--scope global` のときは第1引数に対象プロジェクトの `<root>` を渡します。
 
 ## 設定
 
-アダプタ定義は `~/.config/tsk/config.toml`(`$XDG_CONFIG_HOME/tsk/config.toml`)から読み込まれます。ファイルが存在しない場合は組み込みのデフォルト定義が使われます。
+設定は `~/.config/tsk/config.toml`(`$XDG_CONFIG_HOME/tsk/config.toml`)から読み込まれます。ファイルが存在しない場合は組み込みのデフォルト設定が使われます。
+
+`--scope` を指定しなかったときのデフォルトは、トップレベルの `default_scope` で変更できます(未設定なら `repo`):
+
+```toml
+default_scope = "repo"  # "global" | "repo" | "dir"
+```
 
 ```
 tsk config init [--force]
@@ -46,7 +56,7 @@ tsk config init [--force]
 
 ## Neovim プラグイン
 
-`nvim/` に Neovim(0.10+)用プラグインが入っています。`:Tsk` でカレントプロジェクトのタスクを選んでターミナルで実行できます(`:Tsk!` はキャッシュを無視して再検出)。`:Tsk global` なら全プロジェクトのキャッシュ済みタスクを横断して選択でき、プロジェクトの外からでも実行できます(内部的には `tsk run --global`)。選択には `fzf` があればフローティングターミナルの fzf を使い、なければ `vim.ui.select` にフォールバックします。実行結果はプロセス終了後も残る terminal-emulator バッファに表示されるので、スクロール・ヤンク・検索がそのままでき、末尾に終了ステータスが色付きで付きます(`q` でウィンドウを閉じる)。`tsk` コマンドが PATH にある必要があります。
+`nvim/` に Neovim(0.10+)用プラグインが入っています。`:Tsk` でカレントプロジェクトのタスクを選んでターミナルで実行できます(`:Tsk!` はキャッシュを無視して再検出)。`:Tsk global` なら全プロジェクトのキャッシュ済みタスクを横断して選択でき、プロジェクトの外からでも実行できます(内部的には `tsk run --scope=global`)。選択には `fzf` があればフローティングターミナルの fzf を使い、なければ `vim.ui.select` にフォールバックします。実行結果はプロセス終了後も残る terminal-emulator バッファに表示されるので、スクロール・ヤンク・検索がそのままでき、末尾に終了ステータスが色付きで付きます(`q` でウィンドウを閉じる)。`tsk` コマンドが PATH にある必要があります。
 
 [lazy.nvim](https://github.com/folke/lazy.nvim) はサブディレクトリのプラグインを直接扱えないため、`runtimepath` に `nvim/` を追加してから `setup()` を呼びます:
 

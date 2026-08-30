@@ -11,7 +11,7 @@ run = "go build -o bin/tsk ."
 
 [tasks.install]
 description = "Install tsk into GOBIN (go install .)"
-run = "go install ."
+run = "go install -ldflags=\"-s -w\" -trimpath ."
 
 [tasks.test]
 description = "Run tests"

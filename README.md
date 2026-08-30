@@ -9,7 +9,7 @@
 Go(1.27 以降)があれば `go install` でインストールできます。
 
 ```
-go install github.com/iyuuya/tsk@latest
+go install -ldflags="-s -w" -trimpath github.com/iyuuya/tsk@latest
 ```
 
 ソースからインストールする場合:

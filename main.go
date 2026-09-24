@@ -374,7 +374,7 @@ func cmdRun(args []string) error {
 			if filter != "" {
 				tasks = tasksUnder(filter, tasks)
 			}
-			return pickAndRunTask(root, tasks)
+			return pickAndRunTask(root, tasks, scope != scopeDir)
 		}
 	}
 
@@ -438,7 +438,7 @@ func pickGlobalTask() error {
 		return fmt.Errorf("no cached tasks found")
 	}
 
-	index, err := selectTask(pickerRows(rows, true))
+	index, err := selectTask(pickerRows(rows, true, true))
 	if err != nil {
 		return err
 	}
@@ -452,12 +452,12 @@ func pickGlobalTask() error {
 // pickAndRunTask selects a task discovered for root and runs it. The task
 // keeps its live adaptor reference, so selection does not bypass the cache
 // and discovery semantics used by an explicit run invocation.
-func pickAndRunTask(root string, tasks []task.Task) error {
+func pickAndRunTask(root string, tasks []task.Task, showDir bool) error {
 	if len(tasks) == 0 {
 		return fmt.Errorf("no tasks found")
 	}
 	rows := listTasks(root, tasks)
-	index, err := selectTask(pickerRows(rows, false))
+	index, err := selectTask(pickerRows(rows, false, showDir))
 	if err != nil {
 		return err
 	}

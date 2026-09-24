@@ -44,6 +44,33 @@ func TestFormatPickerFieldsAlignsColumns(t *testing.T) {
 	if got != want {
 		t.Errorf("formatPickerFields() = %q, want %q", got, want)
 	}
+
+}
+
+func TestFormatPickerFieldsOmitsDirectory(t *testing.T) {
+	columns := pickerColumnWidths{adaptor: 8, task: 8, description: 10}
+	got := formatPickerFields("DIR", "mise", "build", "Build binary", columns)
+	want := "mise      build     Build bin…"
+	if got != want {
+		t.Errorf("formatPickerFields() = %q, want %q", got, want)
+	}
+}
+
+func TestPickerColumnsOmitsUniqueDirectoryAndAdaptor(t *testing.T) {
+	rows := []string{
+		"0\t.\tmise\tbuild",
+		"1\t.\tmise\ttest",
+	}
+	columns := pickerColumns(rows, 80)
+	if columns.dir != 0 || columns.adaptor != 0 {
+		t.Errorf("pickerColumns() = %+v, want unique directory and adaptor hidden", columns)
+	}
+
+	rows = append(rows, "2\tsub\tnpm\tbuild")
+	columns = pickerColumns(rows, 80)
+	if columns.dir == 0 || columns.adaptor == 0 {
+		t.Errorf("pickerColumns() = %+v, want distinct directory and adaptor shown", columns)
+	}
 }
 
 func TestRenderPickerUsesCRLF(t *testing.T) {

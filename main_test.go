@@ -417,6 +417,26 @@ func TestCmdRunPicker(t *testing.T) {
 	}
 }
 
+func TestCmdRunScopeDirPickerHidesDir(t *testing.T) {
+	root := setupProject(t)
+
+	oldSelectTask := selectTask
+	t.Cleanup(func() { selectTask = oldSelectTask })
+	selectTask = func(rows []string) (int, error) {
+		if len(rows) != 1 || !strings.HasPrefix(rows[0], "0\t\tfake\thello") {
+			t.Errorf("dir-scope picker rows = %q, want no directory field", rows)
+		}
+		return -1, nil
+	}
+
+	if err := cmdRun([]string{"--scope=dir"}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(filepath.Join(root, "out.txt")); !os.IsNotExist(err) {
+		t.Errorf("canceled picker executed a task: %v", err)
+	}
+}
+
 func TestCmdRunGlobalPicker(t *testing.T) {
 	isolateEnv(t)
 	writeFakeConfig(t)

@@ -18,12 +18,15 @@ var selectTask = selectInteractively
 // pickerRows returns tab-separated picker rows. The leading index identifies
 // the selected row without re-parsing fields that may themselves contain
 // spaces.
-func pickerRows(rows []listTask, global bool) []string {
+func pickerRows(rows []listTask, global, showDir bool) []string {
 	lines := make([]string, len(rows))
 	for i, row := range rows {
-		location := row.Dir
-		if global {
-			location = projectLabel(row.Root) + ":" + location
+		location := ""
+		if showDir {
+			location = row.Dir
+			if global {
+				location = projectLabel(row.Root) + ":" + location
+			}
 		}
 		line := fmt.Sprintf("%d\t%s\t%s\t%s", i, location, row.Adaptor, row.Task)
 		if row.Description != "" {
@@ -172,17 +175,30 @@ type pickerColumnWidths struct {
 
 func pickerColumns(rows []string, width int) pickerColumnWidths {
 	var maxDir, maxAdaptor, maxTask int
+	dirs := make(map[string]struct{})
+	adaptors := make(map[string]struct{})
 	for _, row := range rows {
 		dir, adaptor, task, _ := pickerRowFields(row)
+		if dir != "" {
+			dirs[dir] = struct{}{}
+		}
+		if adaptor != "" {
+			adaptors[adaptor] = struct{}{}
+		}
 		maxDir = max(maxDir, displayWidth(dir))
 		maxAdaptor = max(maxAdaptor, displayWidth(adaptor))
 		maxTask = max(maxTask, displayWidth(task))
 	}
 
 	columns := pickerColumnWidths{
-		dir:     min(max(maxDir, displayWidth("DIR")), 24),
 		adaptor: min(max(maxAdaptor, displayWidth("ADAPTOR")), 14),
 		task:    min(max(maxTask, displayWidth("TASK")), 24),
+	}
+	if len(dirs) > 1 {
+		columns.dir = min(max(maxDir, displayWidth("DIR")), 24)
+	}
+	if len(adaptors) <= 1 {
+		columns.adaptor = 0
 	}
 	available := max(width-2, 1)
 	for columns.dir+columns.adaptor+columns.task+6 > available {
@@ -207,13 +223,15 @@ func formatPickerRow(row string, columns pickerColumnWidths) string {
 }
 
 func formatPickerFields(dir, adaptor, task, description string, columns pickerColumnWidths) string {
-	line := padDisplay(dir, columns.dir) + "  " +
-		padDisplay(adaptor, columns.adaptor) + "  " +
-		padDisplay(task, columns.task)
-	if columns.description > 0 {
-		line += "  " + truncateDisplay(description, columns.description)
+	parts := make([]string, 0, 4)
+	if columns.dir > 0 {
+		parts = append(parts, padDisplay(dir, columns.dir))
 	}
-	return line
+	parts = append(parts, padDisplay(adaptor, columns.adaptor), padDisplay(task, columns.task))
+	if columns.description > 0 {
+		parts = append(parts, truncateDisplay(description, columns.description))
+	}
+	return strings.Join(parts, "  ")
 }
 
 func pickerRowFields(row string) (dir, adaptor, task, description string) {

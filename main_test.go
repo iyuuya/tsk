@@ -391,6 +391,64 @@ func TestCmdRun(t *testing.T) {
 	}
 }
 
+func TestCmdRunPicker(t *testing.T) {
+	root := setupProject(t)
+
+	oldSelectTask := selectTask
+	t.Cleanup(func() { selectTask = oldSelectTask })
+	var rows []string
+	selectTask = func(input []string) (int, error) {
+		rows = input
+		return 0, nil
+	}
+
+	if err := cmdRun(nil); err != nil {
+		t.Fatal(err)
+	}
+	if len(rows) != 1 || !strings.Contains(rows[0], "\tfake\thello\tgreets") {
+		t.Errorf("picker rows = %q, want the discovered task", rows)
+	}
+	data, err := os.ReadFile(filepath.Join(root, "out.txt"))
+	if err != nil {
+		t.Fatalf("picker did not execute the selected task: %v", err)
+	}
+	if string(data) != "ran-hello" {
+		t.Errorf("picker run wrote %q, want %q", data, "ran-hello")
+	}
+}
+
+func TestCmdRunGlobalPicker(t *testing.T) {
+	isolateEnv(t)
+	writeFakeConfig(t)
+	root := t.TempDir()
+	writeFile(t, filepath.Join(root, "fake.json"), `{"scripts": {"hello": ""}}`)
+	if err := state.Save(&state.State{
+		Root: root,
+		Adaptors: []state.CachedAdaptor{{
+			Kind: "fake", Dir: ".",
+			Tasks: []state.CachedTask{{Name: "hello"}},
+		}},
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	oldSelectTask := selectTask
+	t.Cleanup(func() { selectTask = oldSelectTask })
+	selectTask = func(rows []string) (int, error) {
+		if len(rows) != 1 || !strings.Contains(rows[0], "\tfake\thello") {
+			t.Errorf("global picker rows = %q, want the cached task", rows)
+		}
+		return 0, nil
+	}
+
+	if err := cmdRun([]string{"--scope=global"}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(filepath.Join(root, "out.txt")); err != nil {
+		t.Errorf("global picker did not execute the selected task: %v", err)
+	}
+}
+
 func TestCmdRunWithDir(t *testing.T) {
 	root := setupProject(t)
 	writeFile(t, filepath.Join(root, "sub", "fake.json"), `{"scripts": {"deep": ""}}`)
@@ -480,9 +538,10 @@ func TestCmdConfigUsageErrors(t *testing.T) {
 func TestCmdRunUsageErrors(t *testing.T) {
 	isolateEnv(t)
 
-	// Global scope with no root argument.
-	if err := cmdRun([]string{"--scope=global"}); !errors.Is(err, errUsage) {
-		t.Errorf("cmdRun --scope=global with no root = %v, want errUsage", err)
+	// Global scope without positional arguments opens the picker and fails
+	// only because this isolated state directory has no cached tasks.
+	if err := cmdRun([]string{"--scope=global"}); err == nil || errors.Is(err, errUsage) {
+		t.Errorf("cmdRun --scope=global with no cache = %v, want a picker error", err)
 	}
 	// Too few and too many positional arguments. Global scope sidesteps
 	// ProjectRoot so no git repo is needed.

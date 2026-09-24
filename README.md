@@ -33,10 +33,10 @@ tsk list [--refresh] [--scope global|repo|dir] [--json]
 - `global` — tsk がキャッシュしている全プロジェクトのタスク(キャッシュのみを参照するため `--refresh` とは併用できません)
 
 ```
-tsk run [--refresh] [--scope global|repo|dir] [<root>] [<dir>] <adaptor> <task>
+tsk run [--refresh] [--scope global|repo|dir] [<root>] [<dir>] [<adaptor> <task>]
 ```
 
-指定したタスクを実行します。`--scope global` のときは第1引数に対象プロジェクトの `<root>` を渡します。
+指定したタスクを実行します。`adaptor` と `task` を省略すると、組み込みのファジーピッカーでタスクを検索・選択できます。入力するとリアルタイムに絞り込まれ、矢印キーまたは `Ctrl-P`/`Ctrl-N` で移動、`Enter` で実行、`Esc` または `Ctrl-C` で中止します。`--scope global` で引数を省略した場合は、キャッシュ済みの全プロジェクトから選択します。明示的に実行する `--scope global` では第 1 引数に対象プロジェクトの `<root>` を渡します。
 
 ## 設定
 

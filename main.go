@@ -39,7 +39,7 @@ func discoverers() ([]task.Discoverer, error) {
 
 func usage() {
 	fmt.Fprintln(os.Stderr, "usage: tsk list [--refresh] [--scope global|repo|dir] [--json]")
-	fmt.Fprintln(os.Stderr, "       tsk run [--refresh] [--scope global|repo|dir] [<root>] [<dir>] <adaptor> <task>")
+	fmt.Fprintln(os.Stderr, "       tsk run [--refresh] [--scope global|repo|dir] [<root>] [<dir>] [<adaptor> <task>]")
 	fmt.Fprintln(os.Stderr, "       tsk config init [--force]")
 }
 
@@ -333,6 +333,13 @@ func cmdRun(args []string) error {
 		return err
 	}
 
+	if scope == scopeGlobal && len(rest) == 0 {
+		if *refresh {
+			return fmt.Errorf("--refresh is not supported when selecting with --scope global: global selection only reads cached state")
+		}
+		return pickGlobalTask()
+	}
+
 	// root is where tasks are discovered from; base is what an omitted or
 	// relative <dir> resolves against. They differ only for dir scope, where
 	// discovery still runs from the repository root but the target directory
@@ -358,6 +365,16 @@ func cmdRun(args []string) error {
 		root, base = r, r
 		if filter != "" {
 			base = filter
+		}
+		if len(rest) == 0 {
+			tasks, err := syncTasks(root, *refresh)
+			if err != nil {
+				return err
+			}
+			if filter != "" {
+				tasks = tasksUnder(filter, tasks)
+			}
+			return pickAndRunTask(root, tasks)
 		}
 	}
 
@@ -386,6 +403,68 @@ func cmdRun(args []string) error {
 		}
 	}
 	return fmt.Errorf("task not found: %s %s %s", dir, adaptorName, taskName)
+}
+
+// pickGlobalTask selects a task from every project's cached state, then
+// re-discovers the selected project so the task runs through a live adaptor.
+func pickGlobalTask() error {
+	states, err := state.LoadAll()
+	if err != nil {
+		return err
+	}
+	rows := make([]listTask, 0)
+	for _, s := range states {
+		for _, a := range s.Adaptors {
+			for _, t := range a.Tasks {
+				rows = append(rows, listTask{
+					Root: s.Root, Dir: a.Dir, Adaptor: a.Kind, Task: t.Name, Description: t.Description,
+				})
+			}
+		}
+	}
+	sort.Slice(rows, func(i, j int) bool {
+		if rows[i].Root != rows[j].Root {
+			return projectLabel(rows[i].Root) < projectLabel(rows[j].Root)
+		}
+		if rows[i].Dir != rows[j].Dir {
+			return rows[i].Dir < rows[j].Dir
+		}
+		if rows[i].Adaptor != rows[j].Adaptor {
+			return rows[i].Adaptor < rows[j].Adaptor
+		}
+		return rows[i].Task < rows[j].Task
+	})
+	if len(rows) == 0 {
+		return fmt.Errorf("no cached tasks found")
+	}
+
+	index, err := selectTask(pickerRows(rows, true))
+	if err != nil {
+		return err
+	}
+	if index < 0 {
+		return nil
+	}
+	row := rows[index]
+	return cmdRun([]string{"--scope=global", row.Root, row.Dir, row.Adaptor, row.Task})
+}
+
+// pickAndRunTask selects a task discovered for root and runs it. The task
+// keeps its live adaptor reference, so selection does not bypass the cache
+// and discovery semantics used by an explicit run invocation.
+func pickAndRunTask(root string, tasks []task.Task) error {
+	if len(tasks) == 0 {
+		return fmt.Errorf("no tasks found")
+	}
+	rows := listTasks(root, tasks)
+	index, err := selectTask(pickerRows(rows, false))
+	if err != nil {
+		return err
+	}
+	if index < 0 {
+		return nil
+	}
+	return tasks[index].Run()
 }
 
 // syncTasks discovers root's adaptors and returns their tasks, reusing the

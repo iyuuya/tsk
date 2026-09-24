@@ -7,6 +7,7 @@ tool golang.org/x/tools/gopls
 require (
 	github.com/BurntSushi/toml v1.6.0
 	github.com/iyuuya/go v0.1.1
+	golang.org/x/term v0.22.0
 )
 
 require (

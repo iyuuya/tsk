@@ -38,7 +38,8 @@ func discoverers() ([]task.Discoverer, error) {
 }
 
 func usage() {
-	fmt.Fprintln(os.Stderr, "usage: tsk list [--refresh] [--scope global|repo|dir] [--json]")
+	fmt.Fprintln(os.Stderr, "usage: tsk")
+	fmt.Fprintln(os.Stderr, "       tsk list [--refresh] [--scope global|repo|dir] [--json]")
 	fmt.Fprintln(os.Stderr, "       tsk run [--refresh] [--scope global|repo|dir] [<root>] [<dir>] [<adaptor> <task>]")
 	fmt.Fprintln(os.Stderr, "       tsk config init [--force]")
 }
@@ -128,21 +129,20 @@ func main() {
 var errUsage = errors.New("invalid arguments")
 
 func realMain() exitcode.ExitCode {
-	if len(os.Args) < 2 {
-		usage()
-		return exitcode.ExitError
-	}
-
 	var err error
-	switch os.Args[1] {
-	case "list":
-		err = cmdList(os.Args[2:])
-	case "run":
-		err = cmdRun(os.Args[2:])
-	case "config":
-		err = cmdConfig(os.Args[2:])
-	default:
-		err = errUsage
+	if len(os.Args) < 2 {
+		err = cmdRun(nil)
+	} else {
+		switch os.Args[1] {
+		case "list":
+			err = cmdList(os.Args[2:])
+		case "run":
+			err = cmdRun(os.Args[2:])
+		case "config":
+			err = cmdConfig(os.Args[2:])
+		default:
+			err = errUsage
+		}
 	}
 
 	if err != nil {

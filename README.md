@@ -23,6 +23,12 @@ mise run install   # go install . を実行($GOBIN / ~/go/bin に入ります)
 ## 使い方
 
 ```
+tsk
+```
+
+引数なしでは `tsk run` と同じ組み込みファジーピッカーを開きます。
+
+```
 tsk list [--refresh] [--scope global|repo|dir] [--json]
 ```
 

@@ -142,12 +142,27 @@ func runMain(t *testing.T, args ...string) (code exitcode.ExitCode, stdout, stde
 }
 
 func TestRealMainNoArgs(t *testing.T) {
-	code, _, stderr := runMain(t)
-	if code == exitcode.ExitOK {
-		t.Error("realMain with no arguments: expected a non-OK exit code")
+	root := setupProject(t)
+
+	oldSelectTask := selectTask
+	t.Cleanup(func() { selectTask = oldSelectTask })
+	selectTask = func(rows []string) (int, error) {
+		if len(rows) != 1 {
+			t.Errorf("picker rows = %q, want one task", rows)
+		}
+		return 0, nil
 	}
-	if !strings.Contains(stderr, "usage:") {
-		t.Errorf("stderr = %q, want usage text", stderr)
+
+	code, _, stderr := runMain(t)
+	if code != exitcode.ExitOK {
+		t.Fatalf("realMain() = %v, stderr: %s", code, stderr)
+	}
+	data, err := os.ReadFile(filepath.Join(root, "out.txt"))
+	if err != nil {
+		t.Fatalf("tsk did not execute the selected task: %v", err)
+	}
+	if string(data) != "ran-hello" {
+		t.Errorf("tsk wrote %q, want %q", data, "ran-hello")
 	}
 }
 

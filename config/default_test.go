@@ -15,7 +15,7 @@ func TestDefault(t *testing.T) {
 	}
 	defs := cfg.Adaptor
 
-	want := []string{"mise", "bun", "pnpm", "yarn", "npm", "rake", "make"}
+	want := []string{"mise", "bun", "pnpm", "yarn", "npm", "uv", "rake", "make"}
 	if len(defs) != len(want) {
 		t.Fatalf("Default() returned %d definitions, want %d", len(defs), len(want))
 	}

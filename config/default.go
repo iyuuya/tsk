@@ -117,6 +117,26 @@ kind = "json_file_map"
 file = "package.json"
 scripts_field = "scripts"
 
+# uv has no task runner of its own; "uv run" runs the entry points a
+# project declares in pyproject.toml's [project.scripts].
+[[adaptor]]
+kind = "uv"
+definition_files = ["pyproject.toml"]
+run = ["uv", "run", "{{name}}"]
+
+[adaptor.match]
+lockfiles = ["uv.lock"]
+
+[adaptor.match.ancestor_tool]
+files = ["mise.toml", ".mise.toml"]
+table = "tools"
+key = "uv"
+
+[adaptor.list]
+kind = "toml_file_map"
+file = "pyproject.toml"
+scripts_field = "project.scripts"
+
 [[adaptor]]
 kind = "rake"
 definition_files = ["Rakefile", "rakefile"]

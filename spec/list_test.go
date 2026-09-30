@@ -83,6 +83,70 @@ func TestListJSONFileMapErrors(t *testing.T) {
 	}
 }
 
+func TestListTOMLFileMap(t *testing.T) {
+	dir := t.TempDir()
+	writeFile(t, filepath.Join(dir, "pyproject.toml"),
+		"[project]\nname = \"x\"\n\n[project.scripts]\nserve = \"x.app:serve\"\ncli = \"x.cli:main\"\n")
+
+	a := &instance{
+		def: Definition{List: ListSpec{Kind: ListTOMLFileMap, File: "pyproject.toml", ScriptsField: "project.scripts"}},
+		dir: dir,
+	}
+	tasks, err := a.listTOMLFileMap()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(tasks) != 2 || tasks[0].Name != "cli" || tasks[1].Name != "serve" {
+		t.Fatalf("tasks = %+v, want cli and serve in sorted order", tasks)
+	}
+	if tasks[1].Description != "x.app:serve" {
+		t.Errorf("tasks[1].Description = %q, want %q", tasks[1].Description, "x.app:serve")
+	}
+}
+
+func TestListTOMLFileMapMissingScriptsField(t *testing.T) {
+	dir := t.TempDir()
+	writeFile(t, filepath.Join(dir, "pyproject.toml"), "[project]\nname = \"x\"\n")
+
+	a := &instance{
+		def: Definition{List: ListSpec{Kind: ListTOMLFileMap, File: "pyproject.toml", ScriptsField: "project.scripts"}},
+		dir: dir,
+	}
+	tasks, err := a.listTOMLFileMap()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(tasks) != 0 {
+		t.Errorf("got %d tasks for a file with no scripts table, want 0", len(tasks))
+	}
+}
+
+func TestListTOMLFileMapErrors(t *testing.T) {
+	dir := t.TempDir()
+	writeFile(t, filepath.Join(dir, "broken.toml"), "[project\n")
+	writeFile(t, filepath.Join(dir, "scalar.toml"), "[project]\nscripts = \"x\"\n")
+
+	tests := []struct {
+		name string
+		file string
+	}{
+		{"missing file", "absent.toml"},
+		{"invalid TOML", "broken.toml"},
+		{"scripts field not a table", "scalar.toml"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			a := &instance{
+				def: Definition{List: ListSpec{Kind: ListTOMLFileMap, File: tt.file, ScriptsField: "project.scripts"}},
+				dir: dir,
+			}
+			if _, err := a.listTOMLFileMap(); err == nil {
+				t.Error("expected an error, got nil")
+			}
+		})
+	}
+}
+
 func TestListJSONCommand(t *testing.T) {
 	dir := t.TempDir()
 	writeFile(t, filepath.Join(dir, "tasks.json"),

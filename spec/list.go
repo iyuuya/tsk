@@ -12,6 +12,8 @@ import (
 	"sort"
 	"strings"
 
+	"github.com/BurntSushi/toml"
+
 	"github.com/iyuuya/tsk/task"
 )
 
@@ -109,6 +111,44 @@ func (a *instance) listJSONFileMap() ([]task.Task, error) {
 		}
 	}
 
+	return a.tasksFromMap(scripts), nil
+}
+
+// listTOMLFileMap implements ListTOMLFileMap.
+func (a *instance) listTOMLFileMap() ([]task.Task, error) {
+	var doc map[string]any
+	if _, err := toml.DecodeFile(filepath.Join(a.dir, a.def.List.File), &doc); err != nil {
+		return nil, fmt.Errorf("read %s: %w", a.def.List.File, err)
+	}
+
+	var node any = doc
+	for _, key := range strings.Split(a.def.List.ScriptsField, ".") {
+		t, ok := node.(map[string]any)
+		if !ok {
+			return nil, fmt.Errorf("parse %s.%s: not a table", a.def.List.File, a.def.List.ScriptsField)
+		}
+		if node, ok = t[key]; !ok {
+			return nil, nil
+		}
+	}
+	table, ok := node.(map[string]any)
+	if !ok {
+		return nil, fmt.Errorf("parse %s.%s: not a table", a.def.List.File, a.def.List.ScriptsField)
+	}
+
+	scripts := make(map[string]string, len(table))
+	for name, v := range table {
+		s, ok := v.(string)
+		if !ok {
+			return nil, fmt.Errorf("parse %s.%s.%s: not a string", a.def.List.File, a.def.List.ScriptsField, name)
+		}
+		scripts[name] = s
+	}
+	return a.tasksFromMap(scripts), nil
+}
+
+// tasksFromMap turns a name/description map into tasks sorted by name.
+func (a *instance) tasksFromMap(scripts map[string]string) []task.Task {
 	names := make([]string, 0, len(scripts))
 	for name := range scripts {
 		names = append(names, name)
@@ -119,5 +159,5 @@ func (a *instance) listJSONFileMap() ([]task.Task, error) {
 	for _, name := range names {
 		tasks = append(tasks, task.Task{Name: name, Description: scripts[name], Adaptor: a})
 	}
-	return tasks, nil
+	return tasks
 }

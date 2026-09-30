@@ -41,6 +41,8 @@ func (a *instance) List() ([]task.Task, error) {
 		return a.listRegexCommand()
 	case ListJSONFileMap:
 		return a.listJSONFileMap()
+	case ListTOMLFileMap:
+		return a.listTOMLFileMap()
 	default:
 		return nil, fmt.Errorf("adaptor %q: unknown list kind %q", a.def.Kind, a.def.List.Kind)
 	}

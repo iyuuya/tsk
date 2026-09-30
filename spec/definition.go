@@ -1,6 +1,6 @@
 // Package spec lets a task-runner adaptor be described as data instead of
 // Go code: how to detect it on disk, how to list its tasks, and how to run
-// one. tsk's built-in adaptors (mise, bun, pnpm, yarn, npm, rake, make) are
+// one. tsk's built-in adaptors (mise, bun, pnpm, yarn, npm, uv, rake, make) are
 // all just Definition values — see the config package for the default set
 // — none of them has its own .go file.
 package spec
@@ -95,6 +95,11 @@ const (
 	// JSON and takes ScriptsField as a map[string]string; keys become
 	// task names, values their descriptions.
 	ListJSONFileMap ListKind = "json_file_map"
+
+	// ListTOMLFileMap is ListJSONFileMap for a TOML File. ScriptsField may
+	// be a dotted path to a nested table, e.g. "project.scripts" for
+	// pyproject.toml's [project.scripts].
+	ListTOMLFileMap ListKind = "toml_file_map"
 )
 
 // ListSpec configures the ListKind strategy picked for a Definition. Only
@@ -117,8 +122,8 @@ type ListSpec struct {
 	// name and description — applied to each line of output.
 	Pattern string `toml:"pattern,omitempty"`
 
-	// File/ScriptsField: for ListJSONFileMap, the JSON file and the field
-	// on it that holds the name/description map.
+	// File/ScriptsField: for ListJSONFileMap and ListTOMLFileMap, the file
+	// and the field on it that holds the name/description map.
 	File         string `toml:"file,omitempty"`
 	ScriptsField string `toml:"scripts_field,omitempty"`
 }
